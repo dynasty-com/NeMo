@@ -7,9 +7,10 @@ python dialogue_state_tracking_sgd.py \
     --data_dir ~/projects/dst/datasets/$DATASET_NAME \
     --schema_embedding_dir ~/projects/dst/datasets/$DATASET_NAME/embeddings/ \
     --dialogues_example_dir ~/projects/dst/datasets/$DATASET_NAME/dialogue_example_dir \
-    --work_dir ~/projects/dst/models/$MODEL_TYPE \
+    --work_dir ~/projects/dst/models \
     --eval_dataset dev_test \
     --tracker_model=$MODEL_TYPE \
+    --num_gpus 1 \
     --train_batch_size 32 \
     --eval_batch_size 64 \
     --num_epochs 40 \
