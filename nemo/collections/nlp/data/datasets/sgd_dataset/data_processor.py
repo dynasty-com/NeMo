@@ -22,6 +22,8 @@ https://github.com/google-research/google-research/blob/master/schema_guided_dst
 
 import copy
 import json
+from glob import glob
+import logging
 import os
 import pickle
 import re
@@ -43,6 +45,7 @@ FILE_RANGES = {
     "debug_sample": {"train": range(1, 2), "dev": range(1, 2), "test": range(1, 2)},
     "sgdplus_single": {"train": range(1, 2), "dev": range(1, 2), "test": range(1, 2)},
     "sgdplus_all": {"train": range(1, 3), "dev": range(1, 3), "test": range(1, 3)},
+    "lisa": {"train": None, "dev": None, "test": None},
 }
 
 # Name of the file containing all predictions and their corresponding frame metrics.
@@ -181,9 +184,12 @@ class SGDDataProcessor(object):
           examples: a list of `InputExample`s.
         """
         logging.info(f'Creating examples and slot relation list from the dialogues started...')
-        dialog_paths = [
-            os.path.join(self.data_dir, dataset, "dialogues_{:03d}.json".format(i)) for i in self._file_ranges[dataset]
-        ]
+        if self._file_ranges[dataset] is None:
+            dialog_paths = glob(os.path.join(self.data_dir, dataset, "dialogues_*.json"))
+        else:
+            dialog_paths = [
+                os.path.join(self.data_dir, dataset, "dialogues_{:03d}.json".format(i)) for i in self._file_ranges[dataset]
+            ]
         dialogs = SGDDataProcessor.load_dialogues(dialog_paths)
 
         examples = []
@@ -245,10 +251,13 @@ class SGDDataProcessor(object):
             if turn["speaker"] == "USER":
                 user_utterance = turn["utterance"]
                 user_frames = {f["service"]: f for f in turn["frames"]}
-                if turn_idx > 0:
-                    system_turn = dialog["turns"][turn_idx - 1]
-                    system_utterance = system_turn["utterance"]
-                    system_frames = {f["service"]: f for f in system_turn["frames"]}
+                system_index = None
+                for system_index in range(turn_idx - 1, -1, -1):
+                    if dialog["turns"][system_index]["speaker"] == "SYSTEM":
+                        system_turn = dialog["turns"][system_index]
+                        system_utterance = system_turn["utterance"]
+                        system_frames = {f["service"]: f for f in system_turn["frames"]}
+                        break
                 else:
                     system_utterance = ""
                     system_frames = {}
@@ -292,7 +301,7 @@ class SGDDataProcessor(object):
         """
         state_update = dict(current_state)
         for slot, values in current_state.items():
-            if slot in prev_state and prev_state[slot][0] in values:
+            if slot in prev_state and len(prev_state[slot]) > 0 and prev_state[slot][0] in values:
                 # Remove the slot from state if its value didn't change.
                 state_update.pop(slot)
         return state_update
@@ -394,7 +403,10 @@ class SGDDataProcessor(object):
                 if prev_service in states:
                     prev_slot_value_list = states[prev_service]
                 else:
-                    prev_slot_value_list = prev_states[prev_service]
+                    if prev_service in prev_states:
+                        prev_slot_value_list = prev_states[prev_service]
+                    else:
+                        prev_slot_value_list = {}
 
                 cur_slot_value_list = state_update
                 for cur_slot, cur_values in cur_slot_value_list.items():
@@ -409,14 +421,32 @@ class SGDDataProcessor(object):
     def _find_subword_indices(self, slot_values, utterance, char_slot_spans, alignments, subwords, bias):
         """Find indices for subwords corresponding to slot values."""
         span_boundaries = {}
+        if len(utterance.strip()) == 0:
+            return span_boundaries
         for slot, values in slot_values.items():
             # Get all values present in the utterance for the specified slot.
             value_char_spans = {}
             for slot_span in char_slot_spans:
                 if slot_span["slot"] == slot:
                     value = utterance[slot_span["start"] : slot_span["exclusive_end"]]
-                    start_tok_idx = alignments[slot_span["start"]]
-                    end_tok_idx = alignments[slot_span["exclusive_end"] - 1]
+                    try:
+                        start_tok_idx = alignments[slot_span["start"]]
+                    except KeyError:
+                        for i in range(slot_span["start"], -1, -1):
+                            if i in alignments:
+                                start_tok_idx = alignments[i]
+                                break
+                        logging.warning(f"Alignment not found for {slot_span['start']}, using {i}: {utterance[i:slot_span['exclusive_end']]}")
+
+                    try:
+                        end_tok_idx = alignments[slot_span["exclusive_end"] - 1]
+                    except KeyError:
+                        for j in range(slot_span["exclusive_end"] -1, len(utterance)):
+                            if j in alignments:
+                                end_tok_idx = alignments[j]
+                                break
+                        logging.warning(f"Alignment not found for {slot_span['exclusive_end']}, using {j}: {utterance[slot_span['start']:j]}")
+
                     if 0 <= start_tok_idx < len(subwords):
                         end_tok_idx = min(end_tok_idx, len(subwords) - 1)
                         value_char_spans[value] = (start_tok_idx + bias, end_tok_idx + bias)
@@ -482,9 +512,13 @@ class SGDDataProcessor(object):
           example_count: int. number of examples in the specified dataset.
         """
         example_count = 0
-        dialog_paths = [
-            os.path.join(self.data_dir, dataset, "dialogues_{:03d}.json".format(i)) for i in self._file_ranges[dataset]
-        ]
+        if self._file_ranges[dataset] is None:
+            dialog_paths = glob(os.path.join(self.data_dir, dataset, "dialogues_*.json"))
+        else:
+            dialog_paths = [
+                os.path.join(self.data_dir, dataset, "dialogues_{:03d}.json".format(i)) for i in self._file_ranges[dataset]
+            ]
+
         dst_set = SGDDataProcessor.load_dialogues(dialog_paths)
         for dialog in dst_set:
             for turn in dialog["turns"]:
@@ -533,6 +567,9 @@ class SGDDataProcessor(object):
         Returns:
             dialogs (list): the list of all dialogue json files paths
         """
+        if FILE_RANGES[task_name][dataset_split] is None:
+            return glob(os.path.join(data_dir, dataset_split, "dialogues_*.json"))
+
         return [
             os.path.join(data_dir, dataset_split, 'dialogues_{:03d}.json'.format(fid))
             for fid in FILE_RANGES[task_name][dataset_split]

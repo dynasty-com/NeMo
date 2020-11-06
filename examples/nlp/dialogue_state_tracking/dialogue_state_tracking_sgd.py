@@ -263,6 +263,13 @@ if args.task_name == "multiwoz":
         "MAX_NUM_VALUE_PER_CAT_SLOT": 47,
         "MAX_NUM_INTENT": 1,
     }
+elif args.task_name == "lisa":
+    schema_config = {
+        "MAX_NUM_CAT_SLOT": 6,
+        "MAX_NUM_NONCAT_SLOT": 40,
+        "MAX_NUM_VALUE_PER_CAT_SLOT": 7,
+        "MAX_NUM_INTENT": 3
+    }
 else:
     schema_config = {
         "MAX_NUM_CAT_SLOT": 6,

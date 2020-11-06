@@ -25,6 +25,9 @@ import json
 import os
 from collections import OrderedDict, defaultdict
 
+import numpy as np
+import torch
+
 from nemo import logging
 from nemo.collections.nlp.data.datasets.sgd_dataset.input_example import (
     STATUS_ACTIVE,
@@ -172,7 +175,12 @@ def get_predicted_dialog_nemotracker(dialog, all_predictions, schemas, eval_debu
                         sys_slots_last[frame["service"]][action["slot"]] = action["values"][0]
         elif turn["speaker"] == "USER":
             user_utterance = turn["utterance"]
-            system_utterance = dialog["turns"][turn_idx - 1]["utterance"] if turn_idx else ""
+            for system_index in range(turn_idx - 1, -1, -1):
+                if dialog["turns"][system_index]["speaker"] == "SYSTEM":
+                    system_utterance = dialog["turns"][system_index]["utterance"]
+                    break
+            else:
+                system_utterance = ""
             turn_id = "{:02d}".format(turn_idx)
             if len(turn["frames"]) == 2:
                 if frame_service_prev != "" and turn["frames"][0]["service"] != frame_service_prev:
@@ -193,6 +201,12 @@ def get_predicted_dialog_nemotracker(dialog, all_predictions, schemas, eval_debu
                 predictions = all_predictions[(dialog_id, turn_id, frame["service"])]
                 slot_values = all_slot_values[frame["service"]]
                 service_schema = schemas.get_service_schema(frame["service"])
+                for k, v in predictions.items():
+                    if isinstance(v, np.ndarray):
+                        if v.dtype == int:
+                            predictions[k] = torch.LongTensor(v)
+                        else:
+                            predictions[k] = torch.Tensor(v)
 
                 predictions["cat_slot_status_p"] = predictions["cat_slot_status_p"].cpu().numpy()
                 predictions["cat_slot_status"] = predictions["cat_slot_status"].cpu().numpy()
@@ -529,7 +543,13 @@ def get_predicted_dialog_baseline(dialog, all_predictions, schemas):
     for turn_idx, turn in enumerate(dialog["turns"]):
         if turn["speaker"] == "USER":
             user_utterance = turn["utterance"]
-            system_utterance = dialog["turns"][turn_idx - 1]["utterance"] if turn_idx else ""
+            for system_index in range(turn_idx - 1, -1, -1):
+                if dialog["turns"][system_index]["speaker"] == "SYSTEM":
+                    system_utterance = dialog["turns"][system_index]["utterance"]
+                    break
+            else:
+                system_utterance = ""
+
             turn_id = "{:02d}".format(turn_idx)
             for frame in turn["frames"]:
                 predictions = all_predictions[(dialog_id, turn_id, frame["service"])]
