@@ -185,7 +185,7 @@ class SGDDataProcessor(object):
         """
         logging.info(f'Creating examples and slot relation list from the dialogues started...')
         if self._file_ranges[dataset] is None:
-            dialog_paths = glob(os.path.join(self.data_dir, dataset, "dialogues_*.json"))
+            dialog_paths = glob(os.path.join(self.data_dir, dataset, "*dialogues_*.json"))
         else:
             dialog_paths = [
                 os.path.join(self.data_dir, dataset, "dialogues_{:03d}.json".format(i)) for i in self._file_ranges[dataset]
@@ -427,6 +427,7 @@ class SGDDataProcessor(object):
             # Get all values present in the utterance for the specified slot.
             value_char_spans = {}
             for slot_span in char_slot_spans:
+                start_tok_idx, end_tok_idx = None, None
                 if slot_span["slot"] == slot:
                     value = utterance[slot_span["start"] : slot_span["exclusive_end"]]
                     try:
@@ -447,6 +448,8 @@ class SGDDataProcessor(object):
                                 break
                         logging.warning(f"Alignment not found for {slot_span['exclusive_end']}, using {j}: {utterance[slot_span['start']:j]}")
 
+                    if start_tok_idx is None or end_tok_idx is None:
+                        continue
                     if 0 <= start_tok_idx < len(subwords):
                         end_tok_idx = min(end_tok_idx, len(subwords) - 1)
                         value_char_spans[value] = (start_tok_idx + bias, end_tok_idx + bias)
@@ -513,7 +516,7 @@ class SGDDataProcessor(object):
         """
         example_count = 0
         if self._file_ranges[dataset] is None:
-            dialog_paths = glob(os.path.join(self.data_dir, dataset, "dialogues_*.json"))
+            dialog_paths = glob(os.path.join(self.data_dir, dataset, "*dialogues_*.json"))
         else:
             dialog_paths = [
                 os.path.join(self.data_dir, dataset, "dialogues_{:03d}.json".format(i)) for i in self._file_ranges[dataset]
@@ -568,7 +571,7 @@ class SGDDataProcessor(object):
             dialogs (list): the list of all dialogue json files paths
         """
         if FILE_RANGES[task_name][dataset_split] is None:
-            return glob(os.path.join(data_dir, dataset_split, "dialogues_*.json"))
+            return glob(os.path.join(data_dir, dataset_split, "*dialogues_*.json"))
 
         return [
             os.path.join(data_dir, dataset_split, 'dialogues_{:03d}.json'.format(fid))
